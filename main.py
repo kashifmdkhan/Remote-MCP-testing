@@ -3,23 +3,15 @@ import os
 import sqlite3
 from contextlib import closing
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("EXPENSE_DB_PATH", os.path.join(BASE_DIR, "expense.db"))
+# Writable location inside the container. Override with the EXPENSE_DB_PATH
+# environment variable, e.g. /data/expense.db when a persistent volume is mounted.
+DB_PATH = os.environ.get("EXPENSE_DB_PATH", "/tmp/expense.db")
 
 mcp = FastMCP("ExpenseTracker")
 
 
-def check_writable():
-    db_dir = os.path.dirname(DB_PATH)
-    if not os.access(db_dir, os.W_OK):
-        raise PermissionError(f"Directory is not writable: {db_dir}")
-    if os.path.exists(DB_PATH) and not os.access(DB_PATH, os.W_OK):
-        raise PermissionError(f"Database file is not writable: {DB_PATH}")
-
-
 def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    check_writable()
     with closing(sqlite3.connect(DB_PATH)) as conn:
         with conn:  # commits on success
             conn.execute("""
@@ -41,7 +33,7 @@ init_db()
 def add_expense(date: str, amount: float, category: str, subcategory: str = "", note: str = ""):
     """Add a new expense entry to the database. Date format: YYYY-MM-DD."""
     with closing(sqlite3.connect(DB_PATH)) as conn:
-        with conn:  # commits on success, rolls back on error
+        with conn:
             cur = conn.execute(
                 "INSERT INTO expenses (date, amount, category, subcategory, note) VALUES (?, ?, ?, ?, ?)",
                 (date, amount, category, subcategory, note),
