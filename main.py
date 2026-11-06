@@ -1,52 +1,53 @@
 from fastmcp import FastMCP
-import random
-import json
+import os
+import sqlite3
 
-# create the FastMCP server instance
-mcp = FastMCP("Simple calculator server")
+DB_PATH = os.path.join(os.path.dirname(__file__), "expense.db")
+
+mcp = FastMCP("ExpenseTracker")
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as c:
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS expenses(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            CATEGORY TEXT NOT NULL,
+            SUBCATEGORY TEXT DEFAULT '',
+            NOTE TEXT DEFAULT ''
+            )
+""")
+
+init_db()
+
 
 @mcp.tool
-def add(a:int, b:int) -> int:
-    """Add two numbers together
+def add_expense(date, amount, category, subcategory="", note=""):
+    """Add a new expense entry to the database."""
+    with sqlite3.connect(DB_PATH) as c:
+        cur = c.execute(
+            "INSERT INTO EXPENSES (DATE, AMOUNT, CATEGORY, SUBCATEGORY, NOTE) VALUES(?,?,?,?,?)",
+            (date, amount, category, subcategory, note)
+        )
 
-    Args:
-        a: First number
-        b: Second number
-
-    Returns:
-        The Sum of a and b
-    """
-
-    return a+b
-
+        return {"status":"ok", "id": cur.lastrowid}
 
 @mcp.tool
-def random_number(min_val:int = 1, max_val:int = 100)  -> int:
-    """Generate a random number within a range.
+def list_expenses(start_date, end_date):
+    """Retrieves List of all expense entries from database"""
+    with sqlite3.connect(DB_PATH) as c:
+        cur = c.execute(
+            "SELECT id, date, amount, category, subcategory, note FROM EXPENSES " \
+            "WHERE date BETWEEN ? AND ? "
+            "ORDER BY id ASC",
+            (start_date, end_date)
+        )
 
-    Args:
-        min_val: Minimum value (default: 1)
-        max_val: Maximum value (default: 100)
-
-    Returns:
-        A random number between min_val and max_val
-    """
-
-    return random.randint(min_val, max_val)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
-@mcp.resource("info://server")
-def server_info():
-    """Get information about this server."""
-    info = {
-        "name":"Simple Calculator Server",
-        "version": "1.0.0",
-        "description": "A basic MCP server with math tools",
-        "tools": ["add","random_number"],
-        "author":"Kashif"
-    }
-
-    return json.dumps(info, indent=2)
 
 if __name__=="__main__":
     mcp.run(transport="http", host="0.0.0.0", port=8000)
